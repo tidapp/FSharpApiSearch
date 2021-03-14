@@ -26,6 +26,12 @@ group Build
 
   source https://api.nuget.org/v3/index.json
   
-  nuget FAKE
-  nuget FAKE.Persimmon
+  nuget Fake.Core.UserInput prerelease
+  nuget Fake.IO.Zip prerelease
+  nuget Fake.API.GitHub prerelease
+  nuget Fake.Core.Targets prerelease
+  nuget Fake.Tools.Git prerelease
+  nuget Fake.DotNet.Cli prerelease
+  nuget Fake.Core.ReleaseNotes prerelease
   nuget Persimmon.Console
+  nuget Fake.Core.UserInput prerelease

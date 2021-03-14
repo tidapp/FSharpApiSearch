@@ -1,17 +1,26 @@
 // --------------------------------------------------------------------------------------
 // FAKE build script
 // --------------------------------------------------------------------------------------
+#r "paket: groupref Build //"
 
-#r @"packages/build/FAKE/tools/FakeLib.dll"
-#r @"packages/build/FAKE/tools/ICSharpCode.SharpZipLib.dll"
-#r @"packages/build/FAKE.Persimmon/lib/net451/FAKE.Persimmon.dll"
-open Fake
-open Fake.Git
-open Fake.AssemblyInfoFile
-open Fake.ReleaseNotesHelper
-open Fake.UserInputHelper
+// #r "nuget: Fake.Core.Targets, 5.0.0-alpha018"
+// #r "nuget: Fake.Tools.Git, 5.20.4-alpha.1642"
+// #r "nuget: Fake.DotNet.Cli, 5.20.4-alpha.1642"
+// #r "nuget: Fake.Core.ReleaseNotes, 5.20.4-alpha.1642"
+// #r "nuget: Persimmon.Console, 4.0.2"
+// #r "nuget: Fake.API.GitHub, 5.20.4-alpha.1642"
+// #r "nuget: Fake.IO.Zip, 5.20.4-alpha.1642"
+// #r "nuget: Fake.Core.UserInput, 5.20.4-alpha.1642"
+
+open Fake.Core
+open Fake.Tools
+open Fake.IO
+open Fake.DotNet
+open Fake.IO.FileSystemOperators
+open Fake.IO.Globbing.Operators
 open System
 open System.IO
+open Fake.Api
 
 // --------------------------------------------------------------------------------------
 // START TODO: Provide project-specific details below
@@ -45,10 +54,10 @@ let tags = ""
 let solutionFile  = "FSharpApiSearch.sln"
 
 // Default target configuration
-let configuration = "Release"
+let configuration = DotNet.BuildConfiguration.fromString "Release"
 
 // Pattern specifying assemblies to be tested using NUnit
-let testAssemblies = "tests/**/bin" </> configuration </> "*Tests*.dll"
+let testAssemblies = "tests/**/bin" </> string configuration </> "*Tests*.dll"
 
 // Git configuration (used for publishing documentation in gh-pages branch)
 // The profile where the project is posted
@@ -59,14 +68,14 @@ let gitHome = sprintf "%s/%s" "https://github.com" gitOwner
 let gitName = "FSharpApiSearch"
 
 // The url for the raw files hosted
-let gitRaw = environVarOrDefault "gitRaw" "https://raw.githubusercontent.com/hafuu"
+let gitRaw = Environment.environVarOrDefault "gitRaw" "https://raw.githubusercontent.com/hafuu"
 
 // --------------------------------------------------------------------------------------
 // END TODO: The rest of the file includes standard build steps
 // --------------------------------------------------------------------------------------
 
 // Read additional information from the release notes document
-let release = LoadReleaseNotes "RELEASE_NOTES.md"
+let release = ReleaseNotes.load "RELEASE_NOTES.md"
 
 // Helper active pattern for project types
 let (|Fsproj|Csproj|Vbproj|Shproj|) (projFileName:string) =
@@ -77,174 +86,132 @@ let (|Fsproj|Csproj|Vbproj|Shproj|) (projFileName:string) =
     | f when f.EndsWith("shproj") -> Shproj
     | _                           -> failwith (sprintf "Project file %s not supported. Unknown project type." projFileName)
 
-// Generate assembly info files with the right version & up-to-date information
-Target "AssemblyInfo" (fun _ ->
-    let getAssemblyInfoAttributes projectName =
-        [
-          yield Attribute.Title (projectName)
-          yield Attribute.Product project
-          yield Attribute.Description summary
-          yield Attribute.Version release.AssemblyVersion
-          yield Attribute.FileVersion release.AssemblyVersion
-          yield Attribute.Configuration configuration
-
-          match projectName with
-          | "FSharpApiSearch" -> yield  Attribute.InternalsVisibleTo "FSharpApiSearch.Tests"
-          | _ -> ()
-        ]
-
-    let getProjectDetails projectPath =
-        let projectName = System.IO.Path.GetFileNameWithoutExtension(projectPath)
-        ( projectPath,
-          projectName,
-          System.IO.Path.GetDirectoryName(projectPath),
-          (getAssemblyInfoAttributes projectName)
-        )
-
-    !! "src/**/*.??proj"
-    |> Seq.map getProjectDetails
-    |> Seq.iter (fun (projFileName, projectName, folderName, attributes) ->
-        match projFileName with
-        | Fsproj -> CreateFSharpAssemblyInfo (folderName </> "AssemblyInfo.fs") attributes
-        | Csproj -> CreateCSharpAssemblyInfo ((folderName </> "Properties") </> "AssemblyInfo.cs") attributes
-        | Vbproj -> CreateVisualBasicAssemblyInfo ((folderName </> "My Project") </> "AssemblyInfo.vb") attributes
-        | Shproj -> ()
-        )
-)
-
 // Copies binaries from default VS location to expected bin folder
 // But keeps a subdirectory structure for each project in the
 // src folder to support multiple project outputs
-Target "CopyBinaries" (fun _ ->
+Target.Create "CopyBinaries" (fun _ ->
     !! "src/**/*.??proj"
     -- "src/**/*.shproj"
-    |>  Seq.map (fun f -> ((System.IO.Path.GetDirectoryName f) </> "bin" </> configuration, "bin" </> (System.IO.Path.GetFileNameWithoutExtension f)))
-    |>  Seq.iter (fun (fromDir, toDir) -> CopyDir toDir fromDir (fun _ -> true))
+    |>  Seq.map (fun f -> ((System.IO.Path.GetDirectoryName f) </> "bin" </> string configuration, "bin" </> (System.IO.Path.GetFileNameWithoutExtension f)))
+    |>  Seq.iter (fun (fromDir, toDir) -> Shell.copyDir toDir fromDir (fun _ -> true))
 )
 
 // --------------------------------------------------------------------------------------
 // Clean build results
 
 let vsProjProps = 
-#if MONO
-    [ ("DefineConstants","MONO"); ("Configuration", configuration) ]
-#else
-    [ ("Configuration", configuration); ("Platform", "Any CPU") ]
-#endif
+    [ ("Configuration", string configuration) ]
 
-Target "Clean" (fun _ ->
-    !! solutionFile |> MSBuildReleaseExt "" vsProjProps "Clean" |> ignore
-    CleanDirs ["bin"; "temp"; "docs/output"]
+Target.Create "Clean" (fun _ ->
+    let cleanArgs (o: DotNet.MSBuildOptions) = 
+        { o with
+            MSBuildParams = { o.MSBuildParams with 
+                                Targets = ["Clean"]
+                                Properties = vsProjProps } }
+    !! solutionFile
+    |> Seq.head
+    |> DotNet.msbuild cleanArgs
+    Shell.cleanDirs ["bin"; "temp"; "docs/output"]
 )
 
 // --------------------------------------------------------------------------------------
 // Build library & test project
 
-Target "Build" (fun _ ->
+Target.Create "Build" (fun _ ->
+    let buildArgs (o: DotNet.BuildOptions) = 
+        { o with 
+            Configuration = configuration }
     !! solutionFile
-    |> MSBuildReleaseExt "" vsProjProps "Rebuild"
+    |> Seq.head
+    |> DotNet.build buildArgs
     |> ignore
 )
 
 // --------------------------------------------------------------------------------------
 // Run the unit tests using test runner
 
-Target "RunTests" (fun _ ->
-    !! testAssemblies
-    |> Persimmon id
-)
+// Target.Create "RunTests" (fun _ ->
+//     !! testAssemblies
+//     |> Persimmon id
+// )
 
 // --------------------------------------------------------------------------------------
 // Build a NuGet package
 
-Target "NuGet" (fun _ ->
-    Paket.Pack(fun p ->
-        { p with
-            OutputPath = "bin"
-            Version = release.NugetVersion
-            ReleaseNotes = toLines release.Notes})
+Target.Create "NuGet" (fun _ ->
+    DotNet.pack 
+        (fun (p: DotNet.PackOptions) ->
+            { p with
+                Configuration = configuration
+                OutputPath = Some "bin"
+                MSBuildParams = { p.MSBuildParams with 
+                                    Properties = [
+                                        "Version", release.NugetVersion
+                                        "ReleaseNotes", release.Notes |> String.concat "\n"
+                                    ]} }
+                ) solutionFile
 )
 
-Target "PublishNuget" (fun _ ->
-    Paket.Push(fun p ->
-        { p with
-            PublishUrl = "https://www.nuget.org/api/v2/package"
-            WorkingDir = "bin" })
-)
-
-// --------------------------------------------------------------------------------------
-// Build a zip package
-
-let githubReleaseFilePath = "./bin" @@ (project + ".zip")
-
-module ZIP = Fake.ArchiveHelper.Zip
-
-Target "PackGithubRelease" (fun _ ->
-  use file = ZIP.createFile ZIP.ZipCompressionDefaults (fileInfo githubReleaseFilePath)
-
-  let add entry = ZIP.addZipEntry file { ArchiveEntryPath = project </> filename entry; InputFile = fileInfo entry }
-
-  !! ("./bin/FSharpApiSearch/" @@ "**" @@ "*.dll")
-  |> Seq.iter add
-
-  [
-    "./bin/FSharpApiSearch.Console/FSharpApiSearch.Console.exe"
-    "./bin/FSharpApiSearch.Console/FSharpApiSearch.Console.exe.config"
-    "./bin/FSharpApiSearch.Database/FSharpApiSearch.Database.exe"
-    "./bin/FSharpApiSearch.Database/FSharpApiSearch.Database.exe.config"
-  ]
-  |> Seq.iter add
+Target.Create "PublishNuget" (fun _ ->
+    !! "bin/**.nupkg"
+    |> Seq.iter (fun pkg ->
+        let args (p: DotNet.NuGetPushOptions) = 
+            p
+        DotNet.nugetPush args pkg
+    )
 )
 
 // --------------------------------------------------------------------------------------
 // Release Scripts
 
-#load "paket-files/build/fsharp/FAKE/modules/Octokit/Octokit.fsx"
 open Octokit
 
-Target "Release" (fun _ ->
+Target.Create "Release" (fun _ ->
     let user =
-        match getBuildParam "github-user" with
-        | s when not (String.IsNullOrWhiteSpace s) -> s
-        | _ -> getUserInput "Username: "
+        match Environment.environVarOrNone "github-user" with
+        | Some s when not (String.IsNullOrWhiteSpace s) -> s
+        | _ -> UserInput.getUserInput "Username: "
     let pw =
-        match getBuildParam "github-pw" with
-        | s when not (String.IsNullOrWhiteSpace s) -> s
-        | _ -> getUserPassword "Password: "
+        match Environment.environVarOrNone "github-pw" with
+        | Some s when not (String.IsNullOrWhiteSpace s) -> s
+        | _ -> UserInput.getUserPassword "Password: "
     let remote =
         Git.CommandHelper.getGitResult "" "remote -v"
         |> Seq.filter (fun (s: string) -> s.EndsWith("(push)"))
         |> Seq.tryFind (fun (s: string) -> s.Contains(gitOwner + "/" + gitName))
         |> function None -> gitHome + "/" + gitName | Some (s: string) -> s.Split().[0]
 
-    StageAll ""
-    Git.Commit.Commit "" (sprintf "Bump version to %s" release.NugetVersion)
-    Branches.pushBranch "" remote (Information.getBranchName "")
+    Git.Staging.stageAll ""
+    Git.Commit.exec "" (sprintf "Bump version to %s" release.NugetVersion)
+    Git.Branches.pushBranch "" remote (Git.Information.getBranchName "")
 
-    Branches.tag "" release.NugetVersion
-    Branches.pushTag "" remote release.NugetVersion
+    Git.Branches.tag "" release.NugetVersion
+    Git.Branches.pushTag "" remote release.NugetVersion
 
+    let setReleaseParams (p: GitHub.CreateReleaseParams) = 
+        { p with 
+            Draft = release.SemVer.PreRelease <> None
+            Body = release.Notes |> String.concat "\n" }
     // release on github
-    createClient user pw
-    |> createDraft gitOwner gitName release.NugetVersion (release.SemVer.PreRelease <> None) release.Notes
-    |> uploadFile githubReleaseFilePath
-    |> releaseDraft
+    GitHub.createClient user pw
+    |> GitHub.createRelease gitOwner gitName release.NugetVersion setReleaseParams
     |> Async.RunSynchronously
+    |> ignore
 )
 
-Target "BuildPackage" DoNothing
+Target.Create "BuildPackage" Target.DoNothing
 
 // --------------------------------------------------------------------------------------
 // Run all targets by default. Invoke 'build <Target>' to override
 
-Target "All" DoNothing
+Target.Create "All" Target.DoNothing
 
-"AssemblyInfo"
-  ==> "Build"
+open Fake.Core.TargetOperators
+
+"Build"
   ==> "CopyBinaries"
-  ==> "RunTests"
+//   ==> "RunTests"
   ==> "NuGet"
-  ==> "PackGithubRelease"
   ==> "BuildPackage"
   ==> "All"
 
@@ -255,4 +222,4 @@ Target "All" DoNothing
   ==> "PublishNuget"
   ==> "Release"
 
-RunTargetOrDefault "All"
+Target.RunOrDefault "All"
