@@ -3,7 +3,6 @@
 open FSharpApiSearch
 open CommandLine
 open System.IO
-open System.Configuration
 
 type Args = {
   AssemblyResolver : AssemblyLoader.AssemblyResolver
@@ -15,8 +14,8 @@ module Args =
   let defaultArg = {
     AssemblyResolver =
       {
-        FSharpCore = ConfigurationManager.AppSettings.Get("FSharpCore")
-        Framework = ConfigurationManager.AppSettings.Get("Framework").Split(';') |> Array.toList |> List.rev
+        FSharpCore = ""
+        Framework = []
         Directories = []
       }
     References = []
@@ -40,10 +39,8 @@ options:
       Specifies a directory to be searched for assemblies that are referenced.
   --FSharpCore:<folder-name>
       Specifies the FSharp.Core path.
-      If omitted, it will use the value in 'FSharpApiSearch.Database.exe.config'.
   --Framework:<folder-name>
       Specifies a directory to be searched for .Net Framework assemblies that are references.
-      If omitted, it will use the value in 'FSharpApiSearch.Database.exe.config'.
   --help, -h
       Print this message."""
 
@@ -99,7 +96,7 @@ let main argv =
       printApiNumber database
 
       printfn "Saving database."
-      Database.save Database.databaseName database
+      (Database.save Database.databaseName database System.Threading.CancellationToken.None).Wait()
       0
     with ex ->
       printfn "%A" ex

@@ -136,7 +136,8 @@ let createClient (targets: string list) (databasePath: string) =
       raise (InitializeFailed (@"The database is not found. Create the database by executing ""FSharpApiSearch.Database.exe"".", None))
     else
       try
-        FSharpApiSearchClient(targets, Database.loadFromFile databasePath)
+        let database = Database.loadFromFile databasePath System.Threading.CancellationToken.None
+        FSharpApiSearchClient(targets, database.Result)
       with
         ex ->
           raise (InitializeFailed (@"It failed to load the database. Create the database by executing ""FSharpApiSearch.Database.exe"".", Some ex))
