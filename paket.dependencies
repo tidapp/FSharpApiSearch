@@ -26,7 +26,6 @@ group Build
 
   source https://api.nuget.org/v3/index.json
   
-  nuget Fake.Core.UserInput prerelease
   nuget Fake.IO.Zip prerelease
   nuget Fake.API.GitHub prerelease
   nuget Fake.Core.Targets prerelease

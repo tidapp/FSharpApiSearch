@@ -1,9 +1,0 @@
-group App
-FSharp.Core
-FSharp.Compiler.Service
-System.ValueTuple
-MessagePack
-MessagePack.FSharpExtensions
-
-Persimmon
-Persimmon.MuscleAssert
