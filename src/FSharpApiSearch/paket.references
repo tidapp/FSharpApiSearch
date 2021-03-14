@@ -6,3 +6,5 @@ FSharp.Collections.ParallelSeq
 MessagePack
 MessagePack.FSharpExtensions
 System.Reflection.Metadata
+Microsoft.SourceLink.GitHub
+Ply

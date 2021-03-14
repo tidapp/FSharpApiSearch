@@ -1,29 +1,31 @@
 group App
-  framework: net45, net462
+  framework: netstandard2.0, net5.0
 
-  source https://nuget.org/api/v2
+  storage: none
+  source https://api.nuget.org/v3/index.json
 
-  nuget FSharp.Core 4.3.4
+  nuget FSharp.Core
   nuget FParsec
   nuget FSharp.Compiler.Service
   nuget FSharp.Collections.ParallelSeq
   nuget MessagePack
   nuget MessagePack.FSharpExtensions
   nuget System.Reflection.Metadata
+  nuget Ply
+  
+  nuget Microsoft.SourceLink.GitHub copy_local:true
 
   nuget Persimmon
   nuget Persimmon.MuscleAssert
-  nuget System.ValueTuple
 
   nuget BenchmarkDotNet
 
 group Build
-  framework: net462
+  framework: netstandard2.0
+  storage: none
 
-  source https://nuget.org/api/v2
+  source https://api.nuget.org/v3/index.json
   
   nuget FAKE
   nuget FAKE.Persimmon
   nuget Persimmon.Console
-
-  github fsharp/FAKE modules/Octokit/Octokit.fsx

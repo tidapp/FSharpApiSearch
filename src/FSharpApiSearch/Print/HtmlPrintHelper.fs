@@ -50,7 +50,11 @@ type StructuredWriter() =
       else
         results.Last.EndIndex + 1
     let endIndex = sb.Length - 1
-    let color = stack.TryPeek
+    let color =
+      let mutable c = Unchecked.defaultof<_>
+      match stack.TryPeek &c with
+      | true -> Some c
+      | false -> None
 
     add beginIndex endIndex color
 

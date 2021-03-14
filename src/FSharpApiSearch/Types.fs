@@ -17,7 +17,7 @@ type TypeVariable = {
 
 module TypeVariable =
   let ofString (v: string) =
-    if List.exists (fun prefix -> v.StartsWith(prefix)) [ "'"; "^" ] = false then failwithf "wrong variable name: %s" v
+    if [ "'"; "^" ] |> List.exists (fun prefix -> v.StartsWith(prefix)) |> not then failwithf "wrong variable name: %s" v
     { Name = v.TrimStart(''', '^'); IsSolveAtCompileTime = v.StartsWith("^") }
 
 [<MessagePackObject>]

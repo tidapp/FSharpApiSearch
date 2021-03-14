@@ -5,6 +5,7 @@ open System.IO
 open MessagePack.Resolvers
 open MessagePack
 open MessagePack.FSharp
+open FSharp.Control.Tasks.Affine
 
 let databaseName = "database"
 
@@ -75,24 +76,27 @@ module internal Serialization =
       |> ApiLoader.Impl.makeDefAndAbb
     )
 
-let internal initMessagePack = lazy(
-  CompositeResolver.RegisterAndSetAsDefault(FSharpResolver.Instance, StandardResolver.Instance)
+let internal serializationOptions = lazy (
+  let resolver = CompositeResolver.Create(FSharpResolver.Instance, StandardResolver.Instance)
+  MessagePackSerializerOptions.Standard.WithResolver(resolver)
 )
 
-let saveStream (stream: Stream) (database: Database) : unit =
-  initMessagePack.Force()
+let saveStream (stream: Stream) (database: Database) cTok: System.Threading.Tasks.Task<unit> = task {
+  return! MessagePackSerializer.SerializeAsync(stream, Serialization.toDumpObj database, serializationOptions.Value, cTok)
+}
 
-  MessagePackSerializer.Serialize(stream, Serialization.toDumpObj database)
-
-let save (path: string) (database: Database) : unit =
+let save (path: string) (database: Database) ctok = task {
   if File.Exists(path) then File.Delete(path)
   use file = File.OpenWrite(path)
-  saveStream file database
+  return! saveStream file database ctok
+}
 
-let loadFromStream (stream: Stream) : Database =
-  initMessagePack.Force()
-  MessagePackSerializer.Deserialize<Serialization.T>(stream) |> Serialization.fromDumpObj
+let loadFromStream (stream: Stream) ctok = task {
+  let! payload = MessagePackSerializer.DeserializeAsync<Serialization.T>(stream, serializationOptions.Value, ctok)
+  return Serialization.fromDumpObj payload
+}
 
-let loadFromFile (path: string) : Database =
+let loadFromFile (path: string) ctok = task {
   use file = File.OpenRead(path)
-  loadFromStream file
+  return! loadFromStream file ctok
+}
