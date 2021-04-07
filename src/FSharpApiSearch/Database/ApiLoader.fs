@@ -307,8 +307,8 @@ module internal Impl =
                   else
                     List.tail parameters // instance member contains receiver
               [ List.map Parameter.ofLowType ps ]
-              
-            let variables = data.MemberSources |> Seq.map (fun x -> x.GenericParameter.TypeVariable) |> Seq.toList
+
+            let variables = data.MemberSources |> Seq.map (fun x -> if x.IsGenericParameter then Some(x.GenericParameter.TypeVariable) else None) |> Seq.toList |> List.choose id
             let name = data.MemberName
             let member' = { Name = name; Kind = MemberKind.Method; Parameters = parameters; ReturnParameter = returnParam; GenericParameters = [] }
             return { Variables = variables; Constraint = MemberConstraints (modifier, member') }
@@ -452,7 +452,7 @@ module internal Impl =
       let signature = ApiSignature.TypeExtension { ExistingType = existingType; Declaration = accessPath x.DeclaringEntity; MemberModifier = modifier; Member = member' }
       let name =
         let memberAssemblyName = x.ApparentEnclosingEntity.Assembly.SimpleName
-        let memberTypeName = x.ApparentEnclosingEntity.FullName
+        let memberTypeName = x.ApparentEnclosingEntity.TryFullName
         let memberName =
           let name = x.GetDisplayName
           let genericParameters =
@@ -460,8 +460,15 @@ module internal Impl =
             let existingTypeGenericParameters = x.ApparentEnclosingEntity.GenericParameters |> Seq.map (fun x -> x.TypeVariable) |> Seq.toList
             memberGenericParameters |> List.except existingTypeGenericParameters
           { name with GenericParameters = genericParameters }
-        LoadingApiName { AssemblyName = memberAssemblyName; RawName = memberTypeName; MemberName = [ memberName ] }
-      return { Name = name; Signature = signature; TypeConstraints = collectTypeConstraints x.GenericParameters; Document = tryGetXmlDoc xml x }
+
+        memberTypeName
+        |> Option.map(fun memberTypeName ->
+            LoadingApiName { AssemblyName = memberAssemblyName; RawName = memberTypeName; MemberName = [ memberName ] }
+        )
+      return! name
+      |> Option.map(fun name ->
+         { Name = name; Signature = signature; TypeConstraints = collectTypeConstraints x.GenericParameters; Document = tryGetXmlDoc xml x }
+      )
     }
 
   let toFSharpApi isFSharp xml (x: FSharpMemberOrFunctionOrValue) =
