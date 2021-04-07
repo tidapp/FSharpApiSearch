@@ -187,3 +187,8 @@ docs/content/license.md
 docs/content/release-notes.md
 .fake
 docs/tools/FSharp.Formatting.svclog
+
+
+database
+lib/
+.ionide/
