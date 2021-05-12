@@ -1,6 +1,6 @@
 #!/bin/bash
 
-: ${projectdir:=~/projects/tidapp/cloud/fn/build/homepage}
+: ${projectdir:=~/projects/tidapp/cloud/fn/template/}
 : ${nugetdir:=~/.nuget/packages}
 
 libs=$(
@@ -11,6 +11,7 @@ libs=$(
 
 mkdir -p lib/
 find "$nugetdir" | grep -iFf <( echo "$libs" ) | sort -n | xargs -I{} -r cp {} lib/
+find "$projectdir" -iname "*.dll" | sort -n | xargs -I{} -r cp {} lib/
 
 if uname -a | grep -qi microsoft; then
     exec ./bin/FSharpApiSearch.Database/net5.0/FSharpApiSearch.Database.exe "--FSharpCore:C:/Program Files/dotnet/sdk/5.0.201/FSharp" "--Framework:C:/Program Files/dotnet/shared/Microsoft.AspNetCore.App/5.0.4/" "--Framework:C:/Program Files/dotnet/shared/Microsoft.NETCore.App/5.0.4/" --lib:lib/ mscorlib FSharp.Core $(for i in lib/*.dll; do basename $i; done)
